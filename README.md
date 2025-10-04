@@ -1,6 +1,6 @@
 # Git-Notifier
 
-![Android CI](https://github.com/kazimaruf991/Git-Notifier/actions/workflows/android.yml/badge.svg)
+![Android CI](https://github.com/kazimaruf991/GitNotifier/actions/workflows/android.yml/badge.svg)
 
 A modern, dynamic Android app to keep you updated on new commits and releases for your favorite git repositories.
 

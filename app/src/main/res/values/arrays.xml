@@ -1,0 +1,22 @@
+<resources>
+    <string-array name="interval_entries">
+        <item>1 Hour</item>
+        <item>2 Hours</item>
+        <item>3 Hours</item>
+        <item>6 Hours</item>
+        <item>12 Hours</item>
+        <item>Daily</item>
+        <item>Weekly</item>
+        <item>Monthly</item>
+    </string-array>
+    <string-array name="interval_values">
+        <item>3600000</item>
+        <item>7200000</item>
+        <item>10800000</item>
+        <item>21600000</item>
+        <item>43200000</item>
+        <item>86400000</item>
+        <item>604800000</item>
+        <item>2592000000</item>
+    </string-array>
+</resources>

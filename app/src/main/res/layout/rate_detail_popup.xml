@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     android:layout_height="wrap_content"
+     android:layout_width="wrap_content"
+     android:background="@drawable/square_bubble_bg"
+     android:padding="12dp"
+     android:orientation="vertical">
+    
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvUserState"
+         android:text="@string/user_unauthenticated" />
+
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvLimit"
+         android:text="@string/limit_" />
+
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvRemaining"
+         android:text="@string/remaining_" />
+
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvUsed"
+         android:text="@string/used_" />
+
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvReset"
+         android:text="@string/reset_" />
+
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvResource"
+         android:text="@string/resource_" />
+    
+    <TextView
+         android:layout_height="wrap_content"
+         android:layout_width="wrap_content"
+         android:id="@+id/tvUpdated"
+         android:text="@string/updated_" />
+
+    <TextView
+        android:layout_height="wrap_content"
+        android:layout_width="wrap_content"
+        android:id="@+id/tvNextSchedule"
+        android:visibility="gone"
+        android:text="@string/next_schedule_" />
+    
+</LinearLayout>

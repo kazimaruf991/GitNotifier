@@ -1,0 +1,27 @@
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <ListPreference
+        android:key="pref_interval"
+        android:title="Refresh interval"
+        android:icon="@drawable/ic_time"
+        android:entries="@array/interval_entries"
+        android:entryValues="@array/interval_values"
+        android:defaultValue="3600000"
+        android:summary="%s" />
+
+    <EditTextPreference
+        android:key="pref_token"
+        android:icon="@drawable/ic_token"
+        android:title="Personal Access Token"
+        android:summary="Set your GitHub token"
+        android:dialogTitle="Enter Token" />
+
+    <SwitchPreference
+        android:key="pref_unread_top"
+        android:title="Show Unread Repos On Top"
+        android:summary="Show unread repos on top of the list"
+        android:icon="@drawable/ic_top"
+        app:defaultValue="true"
+        android:defaultValue="3600000" />
+</androidx.preference.PreferenceScreen>

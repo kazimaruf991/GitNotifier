@@ -1,0 +1,52 @@
+<!-- res/menu/main_menu.xml -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_start_stop"
+        android:icon="@drawable/ic_play"
+        android:orderInCategory="100"
+        android:title="Start background service"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_add"
+        android:icon="@drawable/ic_add"
+        android:orderInCategory="100"
+        android:title="Add New Repo"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_information"
+        android:icon="@drawable/ic_info"
+        android:orderInCategory="100"
+        android:title="API Limit Info"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_backup_restore"
+        android:icon="@drawable/ic_backup_restore"
+        android:orderInCategory="100"
+        android:title="Backup &amp; Restore"
+        app:showAsAction="never">
+        <menu>
+            <item
+                android:id="@+id/action_backup"
+                android:orderInCategory="100"
+                android:title="Backup"
+                app:showAsAction="never" />
+
+            <item
+                android:id="@+id/action_restore"
+                android:orderInCategory="100"
+                android:title="Restore"
+                app:showAsAction="never" />
+        </menu>
+    </item>
+
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/ic_settings"
+        android:orderInCategory="100"
+        android:title="Settings"
+        app:showAsAction="never" />
+</menu>

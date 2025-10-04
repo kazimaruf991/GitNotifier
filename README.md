@@ -35,7 +35,7 @@ A modern, dynamic Android app to keep you updated on new commits and releases fo
 ## 🛠️ Getting Started
 
 1. **Visit the Latest Release Page:**  
-   👉 [Git Notifier – Latest Release](https://github.com/kazimaruf991/Git-Notifier/releases/latest)
+   👉 [Git Notifier – Latest Release](https://github.com/kazimaruf991/GitNotifier/releases/latest)
 2. **Download the APK** from the Assets section.
 3. **Install on your Android device:**
 	- Enable “Install from unknown sources” in your device settings.

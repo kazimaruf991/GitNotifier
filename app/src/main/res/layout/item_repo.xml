@@ -25,19 +25,69 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentStart="true"
-            android:layout_centerInParent="true"
             android:contentDescription="@string/enable_disable"
             android:thumbTint="@color/thumb_color"
             android:trackTint="@color/track_color" />
 
         <LinearLayout
-            android:id="@+id/infoContainer"
+            android:id="@+id/actionContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentRight="true"
+            android:layout_marginStart="8dp"
+            android:gravity="end|top"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btnEdit"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/edit"
+                android:padding="8dp"
+                android:src="@drawable/ic_edit"
+                card_view:tint="?attr/colorPrimary" />
+
+            <ImageButton
+                android:id="@+id/btnDelete"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/delete"
+                android:padding="8dp"
+                android:src="@drawable/ic_delete"
+                card_view:tint="?attr/colorPrimary" />
+
+            <ImageButton
+                android:id="@+id/btnBrowse"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/browse"
+                android:padding="8dp"
+                android:src="@drawable/ic_web"
+                card_view:tint="?attr/colorPrimary" />
+
+            <ImageButton
+                android:id="@+id/btnRefresh"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/refresh"
+                android:padding="8dp"
+                android:src="@drawable/ic_sync"
+                card_view:tint="?attr/colorPrimary" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/infoContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/switchEnabled"
             android:layout_marginStart="10dp"
-            android:layout_marginLeft="10dp"
-            android:layout_toEndOf="@id/switchEnabled"
-            android:layout_toRightOf="@id/switchEnabled"
             android:orientation="vertical">
 
             <TextView
@@ -68,59 +118,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="5dp"
                 android:text="@string/last_checked_none" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/actionContainer"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentTop="true"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentRight="true"
-            android:layout_marginStart="8dp"
-            android:gravity="end|top"
-            android:orientation="horizontal">
-
-            <ImageButton
-                android:id="@+id/btnEdit"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/edit"
-                android:padding="8dp"
-                android:src="@drawable/ic_edit"
-                android:tint="?attr/colorPrimary" />
-
-            <ImageButton
-                android:id="@+id/btnDelete"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/delete"
-                android:padding="8dp"
-                android:src="@drawable/ic_delete"
-                android:tint="?attr/colorPrimary" />
-
-            <ImageButton
-                android:id="@+id/btnBrowse"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/browse"
-                android:padding="8dp"
-                android:src="@drawable/ic_web"
-                android:tint="?attr/colorPrimary" />
-
-            <ImageButton
-                android:id="@+id/btnRefresh"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/refresh"
-                android:padding="8dp"
-                android:src="@drawable/ic_sync"
-                android:tint="?attr/colorPrimary" />
 
         </LinearLayout>
 

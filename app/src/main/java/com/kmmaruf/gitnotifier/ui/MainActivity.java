@@ -96,6 +96,26 @@ public class MainActivity extends AppCompatActivity {
         setSupportActionBar(binding.topAppBar);
         binding.topAppBar.setSubtitle(R.string.no_unread_notification);
 
+        // Enlarge navigation icon and give it left breathing room
+        binding.topAppBar.post(() -> {
+            float density = getResources().getDisplayMetrics().density;
+            int sizePx = (int) (36 * density);
+            int leftMarginPx = (int) (10 * density);
+            for (int i = 0; i < binding.topAppBar.getChildCount(); i++) {
+                View child = binding.topAppBar.getChildAt(i);
+                if (child instanceof android.widget.ImageButton) {
+                    ViewGroup.MarginLayoutParams lp =
+                            (ViewGroup.MarginLayoutParams) child.getLayoutParams();
+                    lp.width = sizePx;
+                    lp.height = sizePx;
+                    lp.setMarginStart(leftMarginPx);
+                    child.setLayoutParams(lp);
+                    child.setPadding(0, 0, 0, 0);
+                    break;
+                }
+            }
+        });
+
         requestNotificationPermission();
 
         changeSubtitleTextSize(14);
@@ -103,8 +123,21 @@ public class MainActivity extends AppCompatActivity {
         Utils.syncStatusBarColorWithActionBar(this, R.color.md_theme_surface);
 
         viewModel = new ViewModelProvider(this).get(RepoViewModel.class);
-        repoAdapter = new RepoAdapter(this::onRepoClicked, (updatedRepo, isEnabled) -> {
-            viewModel.updateEnableState(updatedRepo.id, isEnabled);
+        repoAdapter = new RepoAdapter(this::onRepoClicked, new RepoAdapter.RepoActionHandler() {
+            @Override
+            public void onUpdateSwitchValue(RepoEntity r, boolean isEnabled) {
+                viewModel.updateEnableState(r.id, isEnabled);
+            }
+
+            @Override
+            public void onMarkCommitsRead(RepoEntity r) {
+                viewModel.markCommitsRead(r.id);
+            }
+
+            @Override
+            public void onMarkReleasesRead(RepoEntity r) {
+                viewModel.markReleasesRead(r.id);
+            }
         });
 
         binding.recyclerRepos.setLayoutManager(new LinearLayoutManager(this));
@@ -112,17 +145,28 @@ public class MainActivity extends AppCompatActivity {
 
         binding.fabAdd.setOnClickListener(v -> AddRepoDialog.show(this, null, repo -> viewModel.insert(repo)));
 
+        View btnEmptyAdd = findViewById(R.id.btnEmptyAdd);
+        if (btnEmptyAdd != null) {
+            btnEmptyAdd.setOnClickListener(v -> AddRepoDialog.show(this, null, repo -> viewModel.insert(repo)));
+        }
         binding.swipeRefresh.setOnRefreshListener(() -> {
             Common.showYesNoDialog(this, getString(R.string.confirm_refresh_all), getString(R.string.do_you_want_to_sync_all_repositories), (dialog, which) -> {
                 if (!NetworkUtils.isInternetAvailable(MainActivity.this)) {
                     binding.swipeRefresh.setRefreshing(false);
                     Toast.makeText(MainActivity.this, R.string.failed_no_internet_connection, Toast.LENGTH_LONG).show();
-                } else {
-                    UUID workId = viewModel.refreshAllImmediately();
-                    viewModel.trackWork(workId);
+                    return;
                 }
+                // Each repo may use up to 2 API calls (commits + releases)
+                int required = Math.max(1, currentRepoCount * 2);
+                String rateError = Utils.checkRateLimitBeforeSync(MainActivity.this, required);
+                if (rateError != null) {
+                    binding.swipeRefresh.setRefreshing(false);
+                    Common.showOkayDialog(MainActivity.this, getString(R.string.rate_limit_exceeded_title), rateError);
+                    return;
+                }
+                UUID workId = viewModel.refreshAllImmediately();
+                viewModel.trackWork(workId);
             }, (dialog, which) -> binding.swipeRefresh.setRefreshing(false));
-
         });
 
         lastSortedValue = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(Keys.PREFS_KEY_UNREAD_TOP, true);
@@ -176,24 +220,30 @@ public class MainActivity extends AppCompatActivity {
             if (repoEntity.unreadCommitsCount > 0 || repoEntity.unreadReleaseCount > 0) {
                 unread++;
             }
-
             if (!repoEntity.enabled) {
                 disabled++;
             }
         }
         currentRepoCount = repos.size();
-        String subTitle = "📦 " + currentRepoCount + getString(R.string.repos);
 
+        // Empty state
+        boolean isEmpty = repos == null || repos.isEmpty();
+        View empty = findViewById(R.id.emptyState);
+        if (empty != null) {
+            empty.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
+        }
+        binding.recyclerRepos.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
+        binding.fabAdd.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
+
+        String subTitle = "📦 " + currentRepoCount + getString(R.string.repos);
         if (unread > 0) {
             subTitle += "  |  🔔 " + unread + getString(R.string.unread);
         }
-
         if (disabled > 0) {
             subTitle += "  |  🚫 " + disabled + getString(R.string.disabled);
         }
-
         binding.topAppBar.setSubtitle(subTitle);
-    }
+}
 
     private void onRepoClicked(RepoEntity repo, int option) {
         if (option == 1) {
@@ -205,6 +255,16 @@ public class MainActivity extends AppCompatActivity {
                 dialog.dismiss();
             }).show();
         } else if (option == 3) {
+            if (!NetworkUtils.isInternetAvailable(this)) {
+                Toast.makeText(this, R.string.failed_no_internet_connection, Toast.LENGTH_LONG).show();
+                return;
+            }
+            // Single repo: up to 2 calls (commits + releases)
+            String rateError = Utils.checkRateLimitBeforeSync(this, 2);
+            if (rateError != null) {
+                Common.showOkayDialog(this, getString(R.string.rate_limit_exceeded_title), rateError);
+                return;
+            }
             UUID workId = viewModel.refreshSingle(repo.id);
             viewModel.trackWork(workId);
             Snackbar.make(binding.getRoot(), getString(R.string.checking) + repo.fullName, Snackbar.LENGTH_SHORT).show();
@@ -383,15 +443,15 @@ public class MainActivity extends AppCompatActivity {
             if (backgroundCheck) {
                 RefreshScheduler.cancelScheduledPeriodic(this);
                 prefs.edit().putBoolean(Keys.PREFS_KEY_BACKGROUND_CHECK, false).apply();
-                item.setTitle("Start background service");
+                item.setTitle(R.string.start_background_service);
                 item.setIcon(R.drawable.ic_play);
             } else {
                 RefreshScheduler.schedulePeriodic(this, true);
                 prefs.edit().putBoolean(Keys.PREFS_KEY_BACKGROUND_CHECK, true).apply();
-                item.setTitle("Stop background service");
+                item.setTitle(R.string.stop_background_service);
                 item.setIcon(R.drawable.ic_stop);
             }
-        } else if (item.getItemId() == R.id.action_backup) {
+} else if (item.getItemId() == R.id.action_backup) {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             folderPickerLauncher.launch(intent);
@@ -517,13 +577,63 @@ public class MainActivity extends AppCompatActivity {
             String decryptedJson = CryptoUtils.decrypt(encrypted, password);
             BackupPayload payload = new Gson().fromJson(decryptedJson, BackupPayload.class);
 
-            Executors.newSingleThreadExecutor().execute(() -> {
-                db.repoDao().insertAll(payload.repos);
-                db.releaseDao().insertAll(payload.releases);
-                db.commitDao().insertAll(payload.commits);
-            });
+            if (payload == null) {
+                Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-            Toast.makeText(context, R.string.restore_complete, Toast.LENGTH_LONG).show();
+            Executors.newSingleThreadExecutor().execute(() -> {
+                // Clear existing data to avoid duplicates / ID conflicts
+                List<RepoEntity> existing = db.repoDao().getAllSync();
+                if (existing != null) {
+                    for (RepoEntity repo : existing) {
+                        db.commitDao().clearByRepoId(repo.id);
+                        db.releaseDao().clearByRepoId(repo.id);
+                        db.repoDao().delete(repo);
+                    }
+                }
+
+                if (payload.repos != null) {
+                    db.repoDao().insertAll(payload.repos);
+                }
+                if (payload.releases != null) {
+                    db.releaseDao().insertAll(payload.releases);
+                }
+                if (payload.commits != null) {
+                    db.commitDao().insertAll(payload.commits);
+                }
+
+                // Restore preferences (token, interval, background flag, etc.)
+                if (payload.preferences != null && !payload.preferences.isEmpty()) {
+                    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+                    SharedPreferences.Editor editor = prefs.edit();
+                    for (Map.Entry<String, ?> entry : payload.preferences.entrySet()) {
+                        String key = entry.getKey();
+                        Object value = entry.getValue();
+                        if (value instanceof String) {
+                            editor.putString(key, (String) value);
+                        } else if (value instanceof Boolean) {
+                            editor.putBoolean(key, (Boolean) value);
+                        } else if (value instanceof Integer) {
+                            editor.putInt(key, (Integer) value);
+                        } else if (value instanceof Long) {
+                            editor.putLong(key, (Long) value);
+                        } else if (value instanceof Float) {
+                            editor.putFloat(key, (Float) value);
+                        }
+                        // skip other types
+                    }
+                    editor.apply();
+                    // Make sure the network client picks up a restored token
+                    com.kmmaruf.gitnotifier.network.ApiClient.reset();
+                }
+
+                runOnUiThread(() -> {
+                    Toast.makeText(context, R.string.restore_complete, Toast.LENGTH_LONG).show();
+                    // Force UI refresh
+                    observeLiveData();
+                });
+            });
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show();

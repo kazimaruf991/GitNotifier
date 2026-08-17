@@ -3,121 +3,173 @@ package com.kmmaruf.gitnotifier.ui;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
-import android.icu.text.SimpleDateFormat;
-import android.icu.util.TimeZone;
-import android.net.ParseException;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.TextView;
 
-import androidx.annotation.RequiresApi;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.button.MaterialButton;
 import com.kmmaruf.gitnotifier.R;
 import com.kmmaruf.gitnotifier.data.AppDatabase;
 import com.kmmaruf.gitnotifier.data.entity.CommitEntity;
 import com.kmmaruf.gitnotifier.data.entity.ReleaseEntity;
-import com.kmmaruf.gitnotifier.databinding.DialogListBinding;
 import com.kmmaruf.gitnotifier.ui.common.Utils;
 
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 
+/**
+ * Dialog-themed activity used both from in-app chips and from notification taps.
+ * Theme is AppDialogTheme so it appears as a floating dialog without launching MainActivity.
+ */
 public class DialogListActivity extends AppCompatActivity {
-    AppDatabase db;
+
+    private AppDatabase db;
+    private int repoId;
+    private String type;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_dialog_list);
+
+        // Cap dialog height so long lists scroll inside the window
+        final View root = findViewById(android.R.id.content);
+        root.post(() -> {
+            int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.72f);
+            View panel = ((ViewGroup) root).getChildAt(0);
+            if (panel != null && panel.getHeight() > maxH) {
+                ViewGroup.LayoutParams lp = panel.getLayoutParams();
+                lp.height = maxH;
+                panel.setLayoutParams(lp);
+            }
+        });
+
         db = AppDatabase.getInstance(getApplicationContext());
-        setTitle("");
 
         String repoName = getIntent().getStringExtra("repo_name");
         String branchName = getIntent().getStringExtra("branch_name");
-        int repoId = getIntent().getIntExtra("repo_id", -2);
-        if (repoId == -2) {
+        repoId = getIntent().getIntExtra("repo_id", -2);
+        type = getIntent().getStringExtra("type");
+
+        if (repoId == -2 || type == null) {
             finish();
             return;
         }
 
-        String type = getIntent().getStringExtra("type");
-        if (type.equals("commit")) {
-            new Thread(() -> {
+        ImageView headerIcon = findViewById(R.id.headerIcon);
+        TextView tvTitle = findViewById(R.id.tvTitle);
+        TextView tvSubtitle = findViewById(R.id.tvSubtitle);
+        RecyclerView rvItems = findViewById(R.id.rvItems);
+        MaterialButton btnDismiss = findViewById(R.id.btnDismiss);
+        MaterialButton btnMarkRead = findViewById(R.id.btnMarkRead);
+        ImageButton btnClose = findViewById(R.id.btnClose);
+
+        tvTitle.setText(repoName != null ? repoName : "");
+        rvItems.setLayoutManager(new LinearLayoutManager(this));
+        rvItems.setHasFixedSize(false);
+
+        btnDismiss.setOnClickListener(v -> finish());
+        btnClose.setOnClickListener(v -> finish());
+
+        if ("commit".equals(type)) {
+            headerIcon.setImageResource(R.drawable.ic_commit);
+            String sub = branchName != null ? branchName : "";
+            tvSubtitle.setText(sub);
+
+            Executors.newSingleThreadExecutor().execute(() -> {
                 List<CommitEntity> commits = db.commitDao().getAllByRepoId(repoId);
+                if (commits == null) commits = new ArrayList<>();
+                final List<CommitEntity> finalCommits = commits;
                 runOnUiThread(() -> {
-                    DialogListBinding b = DialogListBinding.inflate(getLayoutInflater());
-                    b.rvItems.setLayoutManager(new LinearLayoutManager(this));
-                    b.rvItems.setAdapter(new DialogCommitAdapter(commits));
-
-                    AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle(repoName + " : " + branchName + " – " + commits.size() + " new commits").setView(b.getRoot()).setNegativeButton("Close", (d, w) -> finish()).setPositiveButton("Mark As Read", (d, w) -> {
-                        Executors.newSingleThreadExecutor().execute(() -> {
-                            db.repoDao().setUnreadCommitsById(repoId, 0);
-                            db.commitDao().clearByRepoId(repoId);
-                        });
-
-                    }).setOnDismissListener(d -> finish()).create();
-
-                    dialog.setOnShowListener(dialogInterface -> {
-                        ((NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE)).cancel(repoId + 4000); // Use your actual notification ID
-                    });
-
-                    dialog.show();
+                    tvSubtitle.setText(
+                            (branchName != null ? branchName + "  ·  " : "") +
+                                    getString(R.string.new_commits_count, finalCommits.size()));
+                    rvItems.setAdapter(new DialogCommitAdapter(finalCommits));
+                    cancelNotification(repoId + 4000);
                 });
-            }).start();
+            });
 
-        } else if (type.equals("release")) {
-            new Thread(() -> {
+            btnMarkRead.setOnClickListener(v -> {
+                Executors.newSingleThreadExecutor().execute(() -> {
+                    db.repoDao().setUnreadCommitsById(repoId, 0);
+                    db.commitDao().clearByRepoId(repoId);
+                    runOnUiThread(this::finish);
+                });
+            });
+
+        } else if ("release".equals(type)) {
+            headerIcon.setImageResource(R.drawable.ic_release);
+
+            Executors.newSingleThreadExecutor().execute(() -> {
                 List<ReleaseEntity> releases = db.releaseDao().getAllByRepoId(repoId);
+                if (releases == null) releases = new ArrayList<>();
+                final List<ReleaseEntity> finalReleases = releases;
                 runOnUiThread(() -> {
-                    DialogListBinding b = DialogListBinding.inflate(getLayoutInflater());
-                    b.rvItems.setLayoutManager(new LinearLayoutManager(DialogListActivity.this));
-                    b.rvItems.setAdapter(new DialogReleaseAdapter(releases));
-
-                    AlertDialog dialog = new MaterialAlertDialogBuilder(DialogListActivity.this).setTitle(repoName + " – " + releases.size() + " new release").setView(b.getRoot()).setNegativeButton("Close", (d, w) -> finish()).setPositiveButton("Mark As Read", (d, w) -> {
-                        Executors.newSingleThreadExecutor().execute(() -> {
-                            db.repoDao().setUnreadReleasesById(repoId, 0);
-                            db.releaseDao().clearByRepoId(repoId);
-                        });
-                    }).setOnDismissListener(d -> finish()).create();
-
-                    dialog.setOnShowListener(dialogInterface -> {
-                        ((NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE)).cancel(repoId + 5000); // Use your actual notification ID
-                    });
-
-                    dialog.show();
+                    tvSubtitle.setText(getString(R.string.new_releases_count, finalReleases.size()));
+                    rvItems.setAdapter(new DialogReleaseAdapter(finalReleases));
+                    cancelNotification(repoId + 5000);
                 });
-            }).start();
+            });
+
+            btnMarkRead.setOnClickListener(v -> {
+                Executors.newSingleThreadExecutor().execute(() -> {
+                    db.repoDao().setUnreadReleasesById(repoId, 0);
+                    db.releaseDao().clearByRepoId(repoId);
+                    runOnUiThread(this::finish);
+                });
+            });
+        } else {
+            finish();
         }
     }
 
-    private class DialogCommitAdapter extends androidx.recyclerview.widget.RecyclerView.Adapter<DialogCommitAdapter.VH> {
-        List<CommitEntity> list;
+    private void cancelNotification(int id) {
+        NotificationManager nm = (NotificationManager)
+                getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(id);
+    }
+
+    @Override
+    public void onBackPressed() {
+        finish();
+    }
+
+    // ── Commit adapter ──────────────────────────────────────────────
+    private class DialogCommitAdapter extends RecyclerView.Adapter<ItemVH> {
+        private final List<CommitEntity> list;
 
         DialogCommitAdapter(List<CommitEntity> l) {
             list = l;
         }
 
         @Override
-        public VH onCreateViewHolder(android.view.ViewGroup p, int v) {
-            View vew = getLayoutInflater().inflate(R.layout.item_commit, p, false);
-            return new VH(vew);
+        public ItemVH onCreateViewHolder(ViewGroup parent, int viewType) {
+            View v = getLayoutInflater().inflate(R.layout.item_commit, parent, false);
+            return new ItemVH(v);
         }
 
         @Override
-        public void onBindViewHolder(VH h, int pos) {
+        public void onBindViewHolder(ItemVH h, int pos) {
             CommitEntity c = list.get(pos);
-            h.imageViewLeft.setImageResource(R.drawable.ic_commit);
-            h.tvMessage.setText(c.message);
+            h.iconLeft.setImageResource(R.drawable.ic_commit);
+            String msg = c.message != null ? c.message.trim() : "";
+            h.tvMessage.setText(msg);
             h.tvDate.setText(Utils.convertUtcToLocal(c.authorDate));
-            h.imageViewRight.setImageResource(R.drawable.ic_web);
-            h.imageViewRight.setOnClickListener(v -> {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(c.htmlUrl)));
+            h.iconRight.setOnClickListener(v -> {
+                if (c.htmlUrl != null && !c.htmlUrl.isEmpty()) {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(c.htmlUrl)));
+                }
             });
         }
 
@@ -125,43 +177,38 @@ public class DialogListActivity extends AppCompatActivity {
         public int getItemCount() {
             return list.size();
         }
-
-        class VH extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
-            ImageView imageViewLeft, imageViewRight;
-            android.widget.TextView tvMessage, tvDate;
-
-            VH(View v) {
-                super(v);
-                imageViewLeft = v.findViewById(R.id.iconLeft);
-                imageViewRight = v.findViewById(R.id.iconRight);
-                tvMessage = v.findViewById(R.id.tvMessage);
-                tvDate = v.findViewById(R.id.tvDate);
-            }
-        }
     }
 
-    private class DialogReleaseAdapter extends androidx.recyclerview.widget.RecyclerView.Adapter<DialogReleaseAdapter.VH> {
-        List<ReleaseEntity> list;
+    // ── Release adapter ─────────────────────────────────────────────
+    private class DialogReleaseAdapter extends RecyclerView.Adapter<ItemVH> {
+        private final List<ReleaseEntity> list;
 
         DialogReleaseAdapter(List<ReleaseEntity> l) {
             list = l;
         }
 
         @Override
-        public VH onCreateViewHolder(android.view.ViewGroup p, int v) {
-            View vew = getLayoutInflater().inflate(R.layout.item_commit, p, false);
-            return new VH(vew);
+        public ItemVH onCreateViewHolder(ViewGroup parent, int viewType) {
+            View v = getLayoutInflater().inflate(R.layout.item_commit, parent, false);
+            return new ItemVH(v);
         }
 
         @Override
-        public void onBindViewHolder(VH h, int pos) {
+        public void onBindViewHolder(ItemVH h, int pos) {
             ReleaseEntity r = list.get(pos);
-            h.imageViewLeft.setImageResource(R.drawable.ic_release);
-            h.tvMessage.setText(r.name + " (" + r.tagName + ")");
-            h.tvDate.setText(r.body != null ? r.body : "");
-            h.imageViewRight.setImageResource(R.drawable.ic_web);
-            h.imageViewRight.setOnClickListener(v -> {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(r.htmlUrl)));
+            h.iconLeft.setImageResource(R.drawable.ic_release);
+            String title = r.name != null && !r.name.isEmpty() ? r.name : r.tagName;
+            if (r.tagName != null && r.name != null && !r.name.contains(r.tagName)) {
+                title = title + "  (" + r.tagName + ")";
+            }
+            h.tvMessage.setText(title != null ? title : "");
+            String body = r.body != null ? r.body.trim() : "";
+            h.tvDate.setText(body);
+            h.tvDate.setVisibility(body.isEmpty() ? View.GONE : View.VISIBLE);
+            h.iconRight.setOnClickListener(v -> {
+                if (r.htmlUrl != null && !r.htmlUrl.isEmpty()) {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(r.htmlUrl)));
+                }
             });
         }
 
@@ -169,20 +216,19 @@ public class DialogListActivity extends AppCompatActivity {
         public int getItemCount() {
             return list.size();
         }
+    }
 
-        class VH extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
-            ImageView imageViewLeft, imageViewRight;
-            android.widget.TextView tvMessage, tvDate;
+    static class ItemVH extends RecyclerView.ViewHolder {
+        ImageView iconLeft;
+        ImageButton iconRight;
+        TextView tvMessage, tvDate;
 
-            VH(View v) {
-                super(v);
-                imageViewLeft = v.findViewById(R.id.iconLeft);
-                imageViewRight = v.findViewById(R.id.iconRight);
-                tvMessage = v.findViewById(R.id.tvMessage);
-                tvDate = v.findViewById(R.id.tvDate);
-            }
+        ItemVH(View v) {
+            super(v);
+            iconLeft = v.findViewById(R.id.iconLeft);
+            iconRight = v.findViewById(R.id.iconRight);
+            tvMessage = v.findViewById(R.id.tvMessage);
+            tvDate = v.findViewById(R.id.tvDate);
         }
     }
 }
-
-

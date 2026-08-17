@@ -1,27 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <ListPreference
-        android:key="pref_interval"
-        android:title="Refresh interval"
-        android:icon="@drawable/ic_time"
-        android:entries="@array/interval_entries"
-        android:entryValues="@array/interval_values"
-        android:defaultValue="3600000"
-        android:summary="%s" />
+    <PreferenceCategory
+        android:title="@string/pref_monitoring"
+        app:iconSpaceReserved="false">
 
-    <EditTextPreference
-        android:key="pref_token"
-        android:icon="@drawable/ic_token"
-        android:title="Personal Access Token"
-        android:summary="Set your GitHub token"
-        android:dialogTitle="Enter Token" />
+        <ListPreference
+            android:key="pref_interval"
+            android:title="Refresh interval"
+            android:icon="@drawable/ic_time"
+            android:entries="@array/interval_entries"
+            android:entryValues="@array/interval_values"
+            android:defaultValue="3600000"
+            android:summary="%s" />
 
-    <SwitchPreference
-        android:key="pref_unread_top"
-        android:title="Show Unread Repos On Top"
-        android:summary="Show unread repos on top of the list"
-        android:icon="@drawable/ic_top"
-        app:defaultValue="true"
-        android:defaultValue="3600000" />
+        <SwitchPreferenceCompat
+            android:key="pref_unread_top"
+            android:title="Show unread repos on top"
+            android:summary="Sort repositories with unread items to the top of the list"
+            android:icon="@drawable/ic_top"
+            android:defaultValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/pref_account"
+        app:iconSpaceReserved="false">
+
+        <EditTextPreference
+            android:key="pref_token"
+            android:icon="@drawable/ic_token"
+            android:title="Personal Access Token"
+            android:summary="@string/token_summary_empty"
+            android:dialogTitle="Enter GitHub Token" />
+    </PreferenceCategory>
+
 </androidx.preference.PreferenceScreen>

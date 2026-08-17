@@ -81,6 +81,9 @@ public class SettingsActivity extends AppCompatActivity {
                 SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
                 boolean backgroundCheck = prefs.getBoolean(Keys.PREFS_KEY_BACKGROUND_CHECK, false);
                 if (backgroundCheck) RefreshScheduler.schedulePeriodic(getContext(), true);
+            } else if (key.equals(Keys.PREFS_KEY_TOKEN)) {
+                // Force recreation of the Retrofit client so the new token is used
+                com.kmmaruf.gitnotifier.network.ApiClient.reset();
             }
         }
 
@@ -98,7 +101,9 @@ public class SettingsActivity extends AppCompatActivity {
 
                 tokenPref.setSummaryProvider(preference -> {
                     String value = ((EditTextPreference) preference).getText();
-                    return value == null || value.isEmpty() ? getString(R.string.set_your_github_token) : "ghp_••••••";
+                    return value == null || value.isEmpty()
+                            ? getString(R.string.token_summary_empty)
+                            : getString(R.string.token_summary_set);
                 });
             }
         }

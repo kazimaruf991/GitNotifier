@@ -48,8 +48,16 @@
         <item name="colorSurfaceContainerHighest">@color/md_theme_surfaceContainerHighest</item>
     </style>
     
+    <style name="ToolbarTitleCompact" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">19sp</item>
+    </style>
+
     <style name="AppDialogTheme" parent="Theme.Material3.DayNight.Dialog">
-        <!-- Dialog surface styling -->
-        <item name="android:background">@color/md_theme_surfaceContainerHigh</item>
+        <item name="android:windowBackground">@drawable/bg_dialog_rounded</item>
+        <item name="android:background">@android:color/transparent</item>
+        <item name="android:windowMinWidthMajor">92%</item>
+        <item name="android:windowMinWidthMinor">92%</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
     </style>
 </resources>

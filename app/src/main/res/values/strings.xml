@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Git Notifier</string>
-    <string name="notify_on_commits">"📣  Notify on: Commits- "</string>
-    <string name="releases">" | Releases"</string>
-    <string name="last_checked_none">🕒  Last checked: None</string>
-    <string name="last_checked">"🕒  Last checked: "</string>
+    <string name="notify_on_commits">"📣  Notify on: Commits · "</string>
+    <string name="releases">" · Releases"</string>
+    <string name="last_checked_none">Last checked: Never</string>
+    <string name="last_checked">"Last checked: "</string>
     <string name="failed_no_internet_connection">Failed! No internet connection</string>
     <string name="password_cannot_be_empty">Password cannot be empty</string>
     <string name="cancel">Cancel</string>
@@ -61,12 +61,12 @@
     <string name="right_icon">Right Icon</string>
     <string name="enable_disable">Enable/Disable</string>
     <string name="owner_repo">owner/repo</string>
-    <string name="commits_main_releases">Commits: main | Releases: ✔</string>
+    <string name="commits_main_releases">Commits: main · Releases</string>
     <string name="edit">Edit</string>
     <string name="browse">Browse</string>
     <string name="refresh">Refresh</string>
-    <string name="commits_">Commits:</string>
-    <string name="releases_">Releases:</string>
+    <string name="commits_">Commits</string>
+    <string name="releases_">Releases</string>
     <string name="user_unauthenticated">User: Unauthenticated</string>
     <string name="limit_">Limit: —</string>
     <string name="remaining_">Remaining: —</string>
@@ -76,4 +76,37 @@
     <string name="updated_">Updated: —</string>
     <string name="next_schedule_">Next Schedule: —</string>
 
+    <!-- New UI strings -->
+    <string name="no_repositories_yet">No repositories yet</string>
+    <string name="empty_state_subtitle">Add a GitHub repository to start receiving commit and release notifications.</string>
+    <string name="add_repository">Add repository</string>
+    <string name="more_options">More options</string>
+    <string name="branch">Branch</string>
+    <string name="monitoring_on">Monitoring on</string>
+    <string name="monitoring_off">Monitoring off</string>
+    <string name="open_on_github">Open on GitHub</string>
+    <string name="mark_as_read">Mark as read</string>
+    <string name="mark_all_as_read">Mark all as read</string>
+    <string name="just_now">Just now</string>
+    <string name="minutes_ago">%d min ago</string>
+    <string name="hours_ago">%d h ago</string>
+    <string name="days_ago">%d d ago</string>
+    <string name="token_summary_empty">Required for private repos and higher rate limits</string>
+    <string name="token_summary_set">Token is set</string>
+    <string name="pref_monitoring">Monitoring</string>
+    <string name="pref_account">Account</string>
+    <string name="pref_appearance">Appearance</string>
+    <string name="loading_branches">Loading branches…</string>
+    <string name="select_branch">Select a branch</string>
+    <string name="please_select_branch">Please select a branch for commit notifications</string>
+    <string name="valid_url_required">Valid GitHub URL required</string>
+    <string name="close">Close</string>
+    <string name="new_commits_count">%d new commits</string>
+    <string name="new_releases_count">%d new releases</string>
+    <string name="no_items">Nothing new</string>
+    <string name="rate_limit_exceeded_title">Rate limit exceeded</string>
+    <string name="rate_limit_exceeded_message">GitHub API rate limit has been reached. Sync is cancelled.\n\nResets at: %1$s</string>
+    <string name="rate_limit_exceeded_message_unknown">GitHub API rate limit has been reached. Sync is cancelled. Please try again later.</string>
+    <string name="rate_limit_insufficient_title">Not enough API quota</string>
+    <string name="rate_limit_insufficient_message">Only %1$d API request(s) remaining, but this sync may need about %2$d. Sync is cancelled.\n\nResets at: %3$s</string>
 </resources>

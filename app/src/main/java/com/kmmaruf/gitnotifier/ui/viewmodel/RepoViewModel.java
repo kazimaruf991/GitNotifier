@@ -35,7 +35,6 @@ public class RepoViewModel extends AndroidViewModel {
         return Transformations.switchMap(currentWorkId, id -> WorkManager.getInstance(context).getWorkInfoByIdLiveData(id));
     }
 
-
     public LiveData<List<RepoEntity>> getAll(boolean showSorted) {
         if (showSorted) {
             return dao.getAllSorted();
@@ -59,7 +58,28 @@ public class RepoViewModel extends AndroidViewModel {
     }
 
     public void delete(RepoEntity r) {
-        Executors.newSingleThreadExecutor().execute(() -> dao.delete(r));
+        Executors.newSingleThreadExecutor().execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(getApplication());
+            db.commitDao().clearByRepoId(r.id);
+            db.releaseDao().clearByRepoId(r.id);
+            dao.delete(r);
+        });
+    }
+
+    public void markCommitsRead(int repoId) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(getApplication());
+            db.repoDao().setUnreadCommitsById(repoId, 0);
+            db.commitDao().clearByRepoId(repoId);
+        });
+    }
+
+    public void markReleasesRead(int repoId) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(getApplication());
+            db.repoDao().setUnreadReleasesById(repoId, 0);
+            db.releaseDao().clearByRepoId(repoId);
+        });
     }
 
     public UUID refreshAllImmediately() {

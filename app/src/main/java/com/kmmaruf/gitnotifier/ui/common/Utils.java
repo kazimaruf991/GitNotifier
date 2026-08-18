@@ -27,14 +27,13 @@ import java.util.concurrent.TimeUnit;
 
 public class Utils {
 
-    public static void syncStatusBarColorWithActionBar(AppCompatActivity activity, int colorResId) {
-        int color = ContextCompat.getColor(activity, colorResId);
+    public static void syncStatusBarColorWithActionBar(AppCompatActivity activity, int color) {
         if (activity.getSupportActionBar() != null) {
             activity.getSupportActionBar().setBackgroundDrawable(new ColorDrawable(color));
         }
 
         Window window = activity.getWindow();
-        window.setStatusBarColor(ContextCompat.getColor(activity, colorResId));
+        window.setStatusBarColor(color);
 
         int nightModeFlags = activity.getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
@@ -181,5 +180,15 @@ public class Utils {
                     remaining, requiredApprox, resetAt);
         }
         return null;
+    }
+
+    /** Resolve a theme attribute (e.g. colorPrimary) to a color int. */
+    public static int resolveThemeColor(Context context, int attrResId) {
+        android.util.TypedValue tv = new android.util.TypedValue();
+        context.getTheme().resolveAttribute(attrResId, tv, true);
+        if (tv.resourceId != 0) {
+            return ContextCompat.getColor(context, tv.resourceId);
+        }
+        return tv.data;
     }
 }

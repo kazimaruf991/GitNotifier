@@ -30,7 +30,7 @@ public class SettingsActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.settings_toolbar);
         setSupportActionBar(toolbar);
 
-        Utils.syncStatusBarColorWithActionBar(this, R.color.md_theme_surfaceBright);
+        Utils.syncStatusBarColorWithActionBar(this, Utils.resolveThemeColor(this, com.google.android.material.R.attr.colorSurface));
 
         getSupportActionBar().setTitle(R.string.settings);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);

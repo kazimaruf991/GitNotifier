@@ -64,6 +64,10 @@ dependencies {
     // Preferences
     implementation 'androidx.preference:preference:1.2.0'
 
+    // Markdown rendering (commits / release notes)
+    implementation 'io.noties.markwon:core:4.6.2'
+    implementation 'io.noties.markwon:linkify:4.6.2'
+
     // Kotlin Stdlib (force version to avoid conflicts)
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.7.20"
 }

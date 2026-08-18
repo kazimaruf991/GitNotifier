@@ -51,7 +51,9 @@ import com.kmmaruf.gitnotifier.data.entity.CommitEntity;
 import com.kmmaruf.gitnotifier.data.entity.ReleaseEntity;
 import com.kmmaruf.gitnotifier.data.entity.RepoEntity;
 import com.kmmaruf.gitnotifier.databinding.ActivityMainBinding;
+import com.kmmaruf.gitnotifier.network.ApiClient;
 import com.kmmaruf.gitnotifier.network.NetworkUtils;
+import com.kmmaruf.gitnotifier.network.model.RateLimitResponse;
 import com.kmmaruf.gitnotifier.ui.adapter.RepoAdapter;
 import com.kmmaruf.gitnotifier.ui.common.Common;
 import com.kmmaruf.gitnotifier.ui.common.Keys;
@@ -94,13 +96,13 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.topAppBar);
-        binding.topAppBar.setSubtitle(R.string.no_unread_notification);
+        binding.topAppBar.setSubtitle(null);
 
         // Enlarge navigation icon and give it left breathing room
         binding.topAppBar.post(() -> {
             float density = getResources().getDisplayMetrics().density;
             int sizePx = (int) (36 * density);
-            int leftMarginPx = (int) (10 * density);
+            int leftMarginPx = (int) (18 * density);
             for (int i = 0; i < binding.topAppBar.getChildCount(); i++) {
                 View child = binding.topAppBar.getChildAt(i);
                 if (child instanceof android.widget.ImageButton) {
@@ -118,9 +120,8 @@ public class MainActivity extends AppCompatActivity {
 
         requestNotificationPermission();
 
-        changeSubtitleTextSize(14);
 
-        Utils.syncStatusBarColorWithActionBar(this, R.color.md_theme_surface);
+        Utils.syncStatusBarColorWithActionBar(this, Utils.resolveThemeColor(this, com.google.android.material.R.attr.colorSurface));
 
         viewModel = new ViewModelProvider(this).get(RepoViewModel.class);
         repoAdapter = new RepoAdapter(this::onRepoClicked, new RepoAdapter.RepoActionHandler() {
@@ -188,19 +189,6 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void changeSubtitleTextSize(float textSize) {
-        for (int i = 0; i < binding.topAppBar.getChildCount(); i++) {
-            View child = binding.topAppBar.getChildAt(i);
-            if (child instanceof TextView) {
-                TextView tv = (TextView) child;
-                CharSequence subtitle = binding.topAppBar.getSubtitle();
-                if (tv.getText().equals(subtitle)) {
-                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize);
-                    break;
-                }
-            }
-        }
-    }
 
     private void observeLiveData() {
         if (repoAdapter != null) {
@@ -235,15 +223,21 @@ public class MainActivity extends AppCompatActivity {
         binding.recyclerRepos.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
         binding.fabAdd.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
 
-        String subTitle = "📦 " + currentRepoCount + getString(R.string.repos);
-        if (unread > 0) {
-            subTitle += "  |  🔔 " + unread + getString(R.string.unread);
+        if (binding.tvStatRepos != null) {
+            binding.tvStatRepos.setText(String.valueOf(currentRepoCount));
         }
-        if (disabled > 0) {
-            subTitle += "  |  🚫 " + disabled + getString(R.string.disabled);
+        if (binding.tvStatUnread != null) {
+            binding.tvStatUnread.setText(String.valueOf(unread));
+            // Emphasize when there is something to read
+            int unreadColor = unread > 0
+                    ? Utils.resolveThemeColor(this, com.google.android.material.R.attr.colorPrimary)
+                    : Utils.resolveThemeColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant);
+            binding.tvStatUnread.setTextColor(unreadColor);
         }
-        binding.topAppBar.setSubtitle(subTitle);
-}
+        if (binding.tvStatDisabled != null) {
+            binding.tvStatDisabled.setText(String.valueOf(disabled));
+        }
+    }
 
     private void onRepoClicked(RepoEntity repo, int option) {
         if (option == 1) {
@@ -507,18 +501,66 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-
+        refreshRateLimitFromApi();
         animateInfoButton();
+    }
+
+    /**
+     * When a token is set (e.g. user just returned from Settings), query
+     * GET /rate_limit so the info popup and toolbar icon reflect the
+     * authenticated quota instead of stale unauthenticated numbers.
+     */
+    private void refreshRateLimitFromApi() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String token = prefs.getString(Keys.PREFS_KEY_TOKEN, null);
+        if (token == null || token.trim().isEmpty()) {
+            return;
+        }
+        if (!NetworkUtils.isInternetAvailable(this)) {
+            return;
+        }
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                retrofit2.Response<RateLimitResponse> response =
+                        ApiClient.getApi(this).getRateLimit().execute();
+                if (!response.isSuccessful() || response.body() == null
+                        || response.body().resources == null
+                        || response.body().resources.core == null) {
+                    return;
+                }
+                RateLimitResponse.Core core = response.body().resources.core;
+                prefs.edit()
+                        .putString(Keys.PREFS_KEY_RATE_LIMIT, String.valueOf(core.limit))
+                        .putString(Keys.PREFS_KEY_RATE_REMAINING, String.valueOf(core.remaining))
+                        .putString(Keys.PREFS_KEY_RATE_USED, String.valueOf(core.used))
+                        .putString(Keys.PREFS_KEY_RATE_RESET, String.valueOf(core.reset))
+                        .putString(Keys.PREFS_KEY_RATE_RESOURCE, "core")
+                        .putLong(Keys.PREFS_KEY_LAST_UPDATE_TIME, System.currentTimeMillis())
+                        .apply();
+                runOnUiThread(this::animateInfoButton);
+            } catch (Exception ignored) {
+                // Keep previous stored values on failure
+            }
+        });
     }
 
     private void animateInfoButton() {
         if (infoMenuItem != null && infoMenuItem.getIcon() != null) {
             Drawable icon = infoMenuItem.getIcon().mutate();
 
-            int remainToken = Integer.parseInt(PreferenceManager.getDefaultSharedPreferences(this).getString(Keys.PREFS_KEY_RATE_REMAINING, "0"));
+            int remainToken = 0;
+            try {
+                String rem = PreferenceManager.getDefaultSharedPreferences(this)
+                        .getString(Keys.PREFS_KEY_RATE_REMAINING, "0");
+                if (rem != null && !rem.isEmpty() && !rem.equals("--")) {
+                    remainToken = Integer.parseInt(rem.trim());
+                }
+            } catch (NumberFormatException ignored) {
+            }
 
             if (remainToken < (currentRepoCount * 3)) {
-                int fromColor = ContextCompat.getColor(this, R.color.md_theme_primary);
+                int fromColor = Utils.resolveThemeColor(this, com.google.android.material.R.attr.colorPrimary);
                 int toColor = Color.RED;
 
                 ValueAnimator colorAnim = ValueAnimator.ofArgb(fromColor, toColor);
@@ -543,7 +585,14 @@ public class MainActivity extends AppCompatActivity {
             List<ReleaseEntity> releases = db.releaseDao().getAllSync();
             List<CommitEntity> commits = db.commitDao().getAllSync();
             SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-            Map<String, ?> settings = prefs.getAll();
+            // Copy prefs but omit live rate-limit / schedule timestamps (device-specific, stale after restore)
+            Map<String, Object> settings = new java.util.HashMap<>();
+            for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+                if (isRateLimitOrEphemeralPref(e.getKey())) {
+                    continue;
+                }
+                settings.put(e.getKey(), e.getValue());
+            }
 
             BackupPayload payload = new BackupPayload(repos, releases, commits, settings);
             String json = new GsonBuilder().setPrettyPrinting().create().toJson(payload);
@@ -589,9 +638,13 @@ public class MainActivity extends AppCompatActivity {
                     for (RepoEntity repo : existing) {
                         db.commitDao().clearByRepoId(repo.id);
                         db.releaseDao().clearByRepoId(repo.id);
+                        db.seenCommitDao().clearByRepoId(repo.id);
+                        db.seenReleaseDao().clearByRepoId(repo.id);
                         db.repoDao().delete(repo);
                     }
                 }
+                db.seenCommitDao().clearAll();
+                db.seenReleaseDao().clearAll();
 
                 if (payload.repos != null) {
                     db.repoDao().insertAll(payload.repos);
@@ -609,6 +662,9 @@ public class MainActivity extends AppCompatActivity {
                     SharedPreferences.Editor editor = prefs.edit();
                     for (Map.Entry<String, ?> entry : payload.preferences.entrySet()) {
                         String key = entry.getKey();
+                        if (isRateLimitOrEphemeralPref(key)) {
+                            continue; // ignore rate limit from old backups too
+                        }
                         Object value = entry.getValue();
                         if (value instanceof String) {
                             editor.putString(key, (String) value);
@@ -638,5 +694,17 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
             Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Rate-limit and schedule timestamps must not travel with backup/restore. */
+    private static boolean isRateLimitOrEphemeralPref(String key) {
+        if (key == null) return true;
+        return key.equals(Keys.PREFS_KEY_RATE_LIMIT)
+                || key.equals(Keys.PREFS_KEY_RATE_REMAINING)
+                || key.equals(Keys.PREFS_KEY_RATE_USED)
+                || key.equals(Keys.PREFS_KEY_RATE_RESET)
+                || key.equals(Keys.PREFS_KEY_RATE_RESOURCE)
+                || key.equals(Keys.PREFS_KEY_LAST_UPDATE_TIME)
+                || key.equals(Keys.PREFS_KEY_NEXT_SCHEDULED_TIME);
     }
 }

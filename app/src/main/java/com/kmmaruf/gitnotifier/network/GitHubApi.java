@@ -22,4 +22,7 @@ public interface GitHubApi {
     @GET("repos/{owner}/{repo}/releases")
     Call<List<Release>> listReleases(
         @Path("owner") String owner, @Path("repo") String repo);
+
+    @GET("rate_limit")
+    Call<RateLimitResponse> getRateLimit();
 }

@@ -18,7 +18,11 @@ import com.kmmaruf.gitnotifier.R;
 import com.kmmaruf.gitnotifier.data.AppDatabase;
 import com.kmmaruf.gitnotifier.data.entity.CommitEntity;
 import com.kmmaruf.gitnotifier.data.entity.ReleaseEntity;
+import com.kmmaruf.gitnotifier.data.entity.SeenCommitEntity;
+import com.kmmaruf.gitnotifier.data.entity.SeenReleaseEntity;
 import com.kmmaruf.gitnotifier.data.dao.RepoDao;
+import com.kmmaruf.gitnotifier.data.dao.SeenCommitDao;
+import com.kmmaruf.gitnotifier.data.dao.SeenReleaseDao;
 import com.kmmaruf.gitnotifier.data.entity.RepoEntity;
 import com.kmmaruf.gitnotifier.network.ApiClient;
 import com.kmmaruf.gitnotifier.network.GitHubApi;
@@ -31,7 +35,9 @@ import com.kmmaruf.gitnotifier.ui.common.Keys;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import okhttp3.Headers;
 import retrofit2.Response;
@@ -42,7 +48,8 @@ import retrofit2.Response;
  * Key design decisions (fixes applied):
  * - First-time sync only establishes a baseline (newest SHA / release id).
  *   It does NOT generate notifications or unread badges.
- * - Subsequent checks only report items newer than the stored baseline.
+ * - Seen-set of SHAs / release ids (capped) so deleted tips fall back safely.
+ * - Subsequent checks only report items until a known id is hit.
  * - Release detection logic is identical for single-repo and all-repos paths.
  * - Token is always read fresh from preferences (via ApiClient).
  */
@@ -50,6 +57,8 @@ public class RepoWorker extends Worker {
     private final Context context;
     private final AppDatabase db;
     private final RepoDao repoDao;
+    private final SeenCommitDao seenCommitDao;
+    private final SeenReleaseDao seenReleaseDao;
     private final GitHubApi api;
     private final NotificationManager nm;
 
@@ -58,6 +67,8 @@ public class RepoWorker extends Worker {
         context = ctx;
         db = AppDatabase.getInstance(ctx);
         repoDao = db.repoDao();
+        seenCommitDao = db.seenCommitDao();
+        seenReleaseDao = db.seenReleaseDao();
         api = ApiClient.getApi(ctx);
         nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
     }
@@ -177,42 +188,62 @@ public class RepoWorker extends Worker {
         return rateLimitInfo;
     }
 
+    /** Max stored SHAs per repo (ring buffer of recent history). */
+    private static final int SEEN_COMMIT_CAP = 100;
+    /** Max stored release ids per repo. */
+    private static final int SEEN_RELEASE_CAP = 200;
+
     /**
      * GitHub returns commits newest-first.
-     * First-time (no lastCommitSha): only set baseline, do not notify.
-     * Later: collect every commit until we hit the known SHA.
+     * Hybrid: stop at the first SHA already in the seen set (or legacy lastCommitSha).
+     * If nothing on the page is known (tip deleted + set empty/gap), re-baseline only.
      */
     private void handleNewCommits(RepoEntity r, List<Commit> commits) {
         String newestSha = commits.get(0).sha;
+        long now = System.currentTimeMillis();
 
-        // First-time baseline
-        if (r.lastCommitSha == null || r.lastCommitSha.isEmpty()) {
+        Set<String> seen = new HashSet<>(seenCommitDao.getShasForRepo(r.id));
+        // Migrate / keep tip field in sync with the set
+        if (r.lastCommitSha != null && !r.lastCommitSha.isEmpty()) {
+            seen.add(r.lastCommitSha);
+        }
+
+        // First-time baseline: mark entire page as seen, no notifications
+        if (seen.isEmpty()) {
+            markCommitsSeen(r.id, commits, now);
             r.lastCommitSha = newestSha;
             repoDao.update(r);
             return;
         }
 
-        // Already up-to-date
-        if (newestSha.equals(r.lastCommitSha)) {
+        // Already up-to-date (newest tip already known)
+        if (seen.contains(newestSha)) {
+            r.lastCommitSha = newestSha;
+            repoDao.update(r);
             return;
         }
 
         List<Commit> newCommits = new ArrayList<>();
+        boolean foundKnown = false;
         for (Commit c : commits) {
-            if (c.sha.equals(r.lastCommitSha)) {
+            if (seen.contains(c.sha)) {
+                foundKnown = true;
                 break;
             }
             newCommits.add(c);
         }
 
-        // If we never found the old SHA inside the page, treat the whole page as new
-        // (user may have more than 10 new commits – we only surface the latest 10)
-        if (newCommits.isEmpty()) {
-            // Should not happen because newestSha != lastCommitSha, but safety
-            newCommits.addAll(commits);
+        if (!foundKnown) {
+            // Tip deleted / history rewrite / huge gap: re-baseline, do not flood
+            markCommitsSeen(r.id, commits, now);
+            r.lastCommitSha = newestSha;
+            repoDao.update(r);
+            return;
         }
 
         if (!newCommits.isEmpty()) {
+            markCommitsSeen(r.id, newCommits, now);
+            // Also keep the matched older SHAs already in DB
             r.lastCommitSha = newestSha;
             saveCommitsToDb(r, newCommits);
             r.unreadCommitsCount += newCommits.size();
@@ -221,49 +252,102 @@ public class RepoWorker extends Worker {
         }
     }
 
+    private void markCommitsSeen(int repoId, List<Commit> commits, long now) {
+        List<SeenCommitEntity> batch = new ArrayList<>();
+        for (Commit c : commits) {
+            if (c.sha != null && !c.sha.isEmpty()) {
+                batch.add(new SeenCommitEntity(repoId, c.sha, now));
+            }
+        }
+        if (!batch.isEmpty()) {
+            seenCommitDao.insertAll(batch);
+            pruneSeenCommits(repoId);
+        }
+    }
+
+    private void pruneSeenCommits(int repoId) {
+        int count = seenCommitDao.countForRepo(repoId);
+        if (count > SEEN_COMMIT_CAP) {
+            List<String> oldest = seenCommitDao.getOldestShas(repoId, count - SEEN_COMMIT_CAP);
+            if (oldest != null && !oldest.isEmpty()) {
+                seenCommitDao.deleteShas(repoId, oldest);
+            }
+        }
+    }
+
     /**
      * GitHub returns releases newest-first.
-     * First-time (lastReleaseId <= 0): only set baseline, do not notify.
-     * Later: collect every release that is newer than the known id.
-     *
-     * Unified logic used by both single-repo and all-repos paths.
+     * Hybrid: stop at first release id already in the seen set (or legacy lastReleaseId).
+     * If none on the page are known, re-baseline only (no flood).
      */
     private void handleNewReleases(RepoEntity r, List<Release> releases) {
-        // releases.get(0) is the newest
         long newestId = releases.get(0).id;
+        long now = System.currentTimeMillis();
 
-        // First-time baseline – just remember the newest release, no notification
-        if (r.lastReleaseId <= 0) {
+        Set<Long> seen = new HashSet<>(seenReleaseDao.getIdsForRepo(r.id));
+        if (r.lastReleaseId > 0) {
+            seen.add(r.lastReleaseId);
+        }
+
+        // First-time baseline
+        if (seen.isEmpty()) {
+            markReleasesSeen(r.id, releases, now);
             r.lastReleaseId = newestId;
             repoDao.update(r);
             return;
         }
 
-        // Already up-to-date
-        if (newestId == r.lastReleaseId) {
+        if (seen.contains(newestId)) {
+            r.lastReleaseId = newestId;
+            repoDao.update(r);
             return;
         }
 
         List<Release> newReleases = new ArrayList<>();
+        boolean foundKnown = false;
         for (Release rel : releases) {
-            if (rel.id == r.lastReleaseId) {
+            if (seen.contains(rel.id)) {
+                foundKnown = true;
                 break;
             }
             newReleases.add(rel);
         }
 
-        // If the previous id is no longer present in the first page,
-        // treat everything currently returned as new (best-effort).
-        if (newReleases.isEmpty()) {
-            newReleases.addAll(releases);
+        if (!foundKnown) {
+            markReleasesSeen(r.id, releases, now);
+            r.lastReleaseId = newestId;
+            repoDao.update(r);
+            return;
         }
 
         if (!newReleases.isEmpty()) {
+            markReleasesSeen(r.id, newReleases, now);
             r.lastReleaseId = newestId;
             saveReleasesToDb(r, newReleases);
             r.unreadReleaseCount += newReleases.size();
             repoDao.update(r);
             notifyReleases(r, newReleases);
+        }
+    }
+
+    private void markReleasesSeen(int repoId, List<Release> releases, long now) {
+        List<SeenReleaseEntity> batch = new ArrayList<>();
+        for (Release rel : releases) {
+            batch.add(new SeenReleaseEntity(repoId, rel.id, now));
+        }
+        if (!batch.isEmpty()) {
+            seenReleaseDao.insertAll(batch);
+            pruneSeenReleases(repoId);
+        }
+    }
+
+    private void pruneSeenReleases(int repoId) {
+        int count = seenReleaseDao.countForRepo(repoId);
+        if (count > SEEN_RELEASE_CAP) {
+            List<Long> oldest = seenReleaseDao.getOldestIds(repoId, count - SEEN_RELEASE_CAP);
+            if (oldest != null && !oldest.isEmpty()) {
+                seenReleaseDao.deleteIds(repoId, oldest);
+            }
         }
     }
 

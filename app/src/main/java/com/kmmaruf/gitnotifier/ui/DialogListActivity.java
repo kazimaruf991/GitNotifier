@@ -10,6 +10,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.text.method.LinkMovementMethod;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -27,6 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 
+import io.noties.markwon.Markwon;
+import io.noties.markwon.linkify.LinkifyPlugin;
+
 /**
  * Dialog-themed activity used both from in-app chips and from notification taps.
  * Theme is AppDialogTheme so it appears as a floating dialog without launching MainActivity.
@@ -36,6 +40,7 @@ public class DialogListActivity extends AppCompatActivity {
     private AppDatabase db;
     private int repoId;
     private String type;
+    private Markwon markwon;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,7 +48,10 @@ public class DialogListActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dialog_list);
 
-        // Cap dialog height so long lists scroll inside the window
+        markwon = Markwon.builder(this)
+                .usePlugin(LinkifyPlugin.create())
+                .build();
+
         final View root = findViewById(android.R.id.content);
         root.post(() -> {
             int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.72f);
@@ -73,19 +81,15 @@ public class DialogListActivity extends AppCompatActivity {
         RecyclerView rvItems = findViewById(R.id.rvItems);
         MaterialButton btnDismiss = findViewById(R.id.btnDismiss);
         MaterialButton btnMarkRead = findViewById(R.id.btnMarkRead);
-        ImageButton btnClose = findViewById(R.id.btnClose);
 
         tvTitle.setText(repoName != null ? repoName : "");
         rvItems.setLayoutManager(new LinearLayoutManager(this));
         rvItems.setHasFixedSize(false);
 
         btnDismiss.setOnClickListener(v -> finish());
-        btnClose.setOnClickListener(v -> finish());
 
         if ("commit".equals(type)) {
             headerIcon.setImageResource(R.drawable.ic_commit);
-            String sub = branchName != null ? branchName : "";
-            tvSubtitle.setText(sub);
 
             Executors.newSingleThreadExecutor().execute(() -> {
                 List<CommitEntity> commits = db.commitDao().getAllByRepoId(repoId);
@@ -145,7 +149,6 @@ public class DialogListActivity extends AppCompatActivity {
         finish();
     }
 
-    // ── Commit adapter ──────────────────────────────────────────────
     private class DialogCommitAdapter extends RecyclerView.Adapter<ItemVH> {
         private final List<CommitEntity> list;
 
@@ -164,13 +167,17 @@ public class DialogListActivity extends AppCompatActivity {
             CommitEntity c = list.get(pos);
             h.iconLeft.setImageResource(R.drawable.ic_commit);
             String msg = c.message != null ? c.message.trim() : "";
-            h.tvMessage.setText(msg);
+            markwon.setMarkdown(h.tvMessage, msg);
             h.tvDate.setText(Utils.convertUtcToLocal(c.authorDate));
+            h.tvDate.setVisibility(View.VISIBLE);
             h.iconRight.setOnClickListener(v -> {
                 if (c.htmlUrl != null && !c.htmlUrl.isEmpty()) {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(c.htmlUrl)));
                 }
             });
+            if (h.divider != null) {
+                h.divider.setVisibility(pos < list.size() - 1 ? View.VISIBLE : View.GONE);
+            }
         }
 
         @Override
@@ -179,7 +186,6 @@ public class DialogListActivity extends AppCompatActivity {
         }
     }
 
-    // ── Release adapter ─────────────────────────────────────────────
     private class DialogReleaseAdapter extends RecyclerView.Adapter<ItemVH> {
         private final List<ReleaseEntity> list;
 
@@ -201,15 +207,23 @@ public class DialogListActivity extends AppCompatActivity {
             if (r.tagName != null && r.name != null && !r.name.contains(r.tagName)) {
                 title = title + "  (" + r.tagName + ")";
             }
+            // Title as plain text (often not markdown); body as markdown
             h.tvMessage.setText(title != null ? title : "");
             String body = r.body != null ? r.body.trim() : "";
-            h.tvDate.setText(body);
-            h.tvDate.setVisibility(body.isEmpty() ? View.GONE : View.VISIBLE);
+            if (body.isEmpty()) {
+                h.tvDate.setVisibility(View.GONE);
+            } else {
+                h.tvDate.setVisibility(View.VISIBLE);
+                markwon.setMarkdown(h.tvDate, body);
+            }
             h.iconRight.setOnClickListener(v -> {
                 if (r.htmlUrl != null && !r.htmlUrl.isEmpty()) {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(r.htmlUrl)));
                 }
             });
+            if (h.divider != null) {
+                h.divider.setVisibility(pos < list.size() - 1 ? View.VISIBLE : View.GONE);
+            }
         }
 
         @Override
@@ -222,6 +236,7 @@ public class DialogListActivity extends AppCompatActivity {
         ImageView iconLeft;
         ImageButton iconRight;
         TextView tvMessage, tvDate;
+        View divider;
 
         ItemVH(View v) {
             super(v);
@@ -229,6 +244,15 @@ public class DialogListActivity extends AppCompatActivity {
             iconRight = v.findViewById(R.id.iconRight);
             tvMessage = v.findViewById(R.id.tvMessage);
             tvDate = v.findViewById(R.id.tvDate);
+            // Required for markdown / auto-link spans to receive clicks
+            tvMessage.setMovementMethod(LinkMovementMethod.getInstance());
+            tvDate.setMovementMethod(LinkMovementMethod.getInstance());
+            if (v instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) v;
+                if (vg.getChildCount() > 0) {
+                    divider = vg.getChildAt(vg.getChildCount() - 1);
+                }
+            }
         }
     }
 }

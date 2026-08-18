@@ -62,6 +62,8 @@ public class RepoViewModel extends AndroidViewModel {
             AppDatabase db = AppDatabase.getInstance(getApplication());
             db.commitDao().clearByRepoId(r.id);
             db.releaseDao().clearByRepoId(r.id);
+            db.seenCommitDao().clearByRepoId(r.id);
+            db.seenReleaseDao().clearByRepoId(r.id);
             dao.delete(r);
         });
     }

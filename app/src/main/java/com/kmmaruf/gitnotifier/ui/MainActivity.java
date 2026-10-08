@@ -83,6 +83,12 @@ public class MainActivity extends AppCompatActivity {
     private RepoViewModel viewModel;
     private RepoAdapter repoAdapter;
     private MenuItem infoMenuItem;
+    private final android.os.Handler fabHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable fabHideRunnable = () -> {
+        if (binding != null && binding.fabAdd != null) {
+            binding.fabAdd.hide();
+        }
+    };
 
     private boolean lastSortedValue;
     private int currentRepoCount;
@@ -173,6 +179,8 @@ public class MainActivity extends AppCompatActivity {
         lastSortedValue = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(Keys.PREFS_KEY_UNREAD_TOP, true);
 
         observeLiveData();
+        setupFabAutoHide();
+
 
         SyncTracker.getActiveRepoId().observe(this, activeId -> {
             repoAdapter.setActiveRepoId(activeId);
@@ -323,9 +331,19 @@ public class MainActivity extends AppCompatActivity {
             Intent data = result.getData();
             if (data != null) {
                 Uri fileUri = data.getData();
-                Common.showPasswordPrompt(this, getString(R.string.enter_backup_password), password -> {
-                    restoreEncryptedBackup(this, fileUri, password);
-                });
+                String fileName = getDisplayName(fileUri);
+                String message = fileName != null
+                        ? getString(R.string.restore_file_label, fileName)
+                        : null;
+                Common.showPasswordPrompt(this, getString(R.string.enter_backup_password), message,
+                        (password, dialog, layout) -> {
+                            boolean ok = restoreEncryptedBackup(this, fileUri, password);
+                            if (ok) {
+                                dialog.dismiss();
+                            } else {
+                                layout.setError(getString(R.string.incorrect_password));
+                            }
+                        });
             }
         }
     });
@@ -499,6 +517,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onDestroy() {
+        fabHandler.removeCallbacks(fabHideRunnable);
+        super.onDestroy();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         refreshRateLimitFromApi();
@@ -619,20 +643,27 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    public void restoreEncryptedBackup(Context context, Uri fileUri, String password) {
+    /**
+     * @return true if password was accepted and restore started; false if decrypt failed
+     */
+    public boolean restoreEncryptedBackup(Context context, Uri fileUri, String password) {
         AppDatabase db = AppDatabase.getInstance(getApplication());
+        final BackupPayload payload;
         try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
+            if (is == null) return false;
             byte[] encrypted = Utils.readAllBytes(is);
             String decryptedJson = CryptoUtils.decrypt(encrypted, password);
-            BackupPayload payload = new Gson().fromJson(decryptedJson, BackupPayload.class);
-
+            payload = new Gson().fromJson(decryptedJson, BackupPayload.class);
             if (payload == null) {
-                Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show();
-                return;
+                return false;
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
 
-            Executors.newSingleThreadExecutor().execute(() -> {
-                // Clear existing data to avoid duplicates / ID conflicts
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
                 List<RepoEntity> existing = db.repoDao().getAllSync();
                 if (existing != null) {
                     for (RepoEntity repo : existing) {
@@ -656,14 +687,13 @@ public class MainActivity extends AppCompatActivity {
                     db.commitDao().insertAll(payload.commits);
                 }
 
-                // Restore preferences (token, interval, background flag, etc.)
                 if (payload.preferences != null && !payload.preferences.isEmpty()) {
                     SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
                     SharedPreferences.Editor editor = prefs.edit();
                     for (Map.Entry<String, ?> entry : payload.preferences.entrySet()) {
                         String key = entry.getKey();
                         if (isRateLimitOrEphemeralPref(key)) {
-                            continue; // ignore rate limit from old backups too
+                            continue;
                         }
                         Object value = entry.getValue();
                         if (value instanceof String) {
@@ -677,23 +707,161 @@ public class MainActivity extends AppCompatActivity {
                         } else if (value instanceof Float) {
                             editor.putFloat(key, (Float) value);
                         }
-                        // skip other types
                     }
                     editor.apply();
-                    // Make sure the network client picks up a restored token
                     com.kmmaruf.gitnotifier.network.ApiClient.reset();
                 }
 
                 runOnUiThread(() -> {
                     Toast.makeText(context, R.string.restore_complete, Toast.LENGTH_LONG).show();
-                    // Force UI refresh
                     observeLiveData();
                 });
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() ->
+                        Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show());
+            }
+        });
+        return true;
+    }
+
+    private String getDisplayName(Uri uri) {
+        if (uri == null) return null;
+        String name = null;
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) {
+                    name = cursor.getString(idx);
+                }
+            }
+        } catch (Exception ignored) {
         }
+        if (name == null || name.isEmpty()) {
+            name = uri.getLastPathSegment();
+        }
+        return name;
+    }
+
+    /**
+     * Handle ACTION_SEND / ACTION_VIEW from the system share sheet or browser.
+     * If the shared text/URL is a GitHub repository link, open the add-repo dialog.
+     */
+    private void handleIncomingShareIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (action == null) return;
+
+        String raw = null;
+        if (Intent.ACTION_SEND.equals(action)) {
+            String type = intent.getType();
+            if (type != null && type.startsWith("text/")) {
+                raw = intent.getStringExtra(Intent.EXTRA_TEXT);
+            }
+        } else if (Intent.ACTION_VIEW.equals(action) && intent.getData() != null) {
+            raw = intent.getData().toString();
+        } else {
+            return;
+        }
+
+        if (raw == null || raw.trim().isEmpty()) {
+            return;
+        }
+
+        String repoUrl = extractGithubRepoUrl(raw.trim());
+        if (repoUrl == null) {
+            Toast.makeText(this, R.string.not_a_github_repo_link, Toast.LENGTH_LONG).show();
+            intent.setAction(null);
+            return;
+        }
+
+        intent.setAction(null);
+
+        final String urlToAdd = repoUrl;
+        binding.getRoot().post(() ->
+                AddRepoDialog.showWithUrl(MainActivity.this, urlToAdd, repo -> viewModel.insert(repo)));
+    }
+
+    /**
+     * Accepts a bare URL or free text containing a github.com/owner/repo link.
+     * Returns normalized https://github.com/owner/repo or null.
+     */
+
+    /**
+     * Show FAB when scrolling starts; hide after idle; hide when last item is visible
+     * or user is scrolling down.
+     */
+    private void setupFabAutoHide() {
+        binding.recyclerRepos.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(androidx.recyclerview.widget.RecyclerView recyclerView, int newState) {
+                if (newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_DRAGGING
+                        || newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_SETTLING) {
+                    fabHandler.removeCallbacks(fabHideRunnable);
+                    if (binding.recyclerRepos.getVisibility() == android.view.View.VISIBLE) {
+                        binding.fabAdd.show();
+                    }
+                } else if (newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                    if (isLastItemFullyVisible()) {
+                        binding.fabAdd.hide();
+                    } else {
+                        fabHandler.removeCallbacks(fabHideRunnable);
+                        fabHandler.postDelayed(fabHideRunnable, 2500);
+                    }
+                }
+            }
+
+            @Override
+            public void onScrolled(androidx.recyclerview.widget.RecyclerView recyclerView, int dx, int dy) {
+                if (dy > 0) {
+                    // Scrolling down
+                    binding.fabAdd.hide();
+                    fabHandler.removeCallbacks(fabHideRunnable);
+                }
+                if (isLastItemFullyVisible()) {
+                    binding.fabAdd.hide();
+                    fabHandler.removeCallbacks(fabHideRunnable);
+                }
+            }
+        });
+    }
+
+    private boolean isLastItemFullyVisible() {
+        androidx.recyclerview.widget.RecyclerView.LayoutManager lm = binding.recyclerRepos.getLayoutManager();
+        if (!(lm instanceof androidx.recyclerview.widget.LinearLayoutManager)) {
+            return false;
+        }
+        androidx.recyclerview.widget.LinearLayoutManager llm =
+                (androidx.recyclerview.widget.LinearLayoutManager) lm;
+        int total = llm.getItemCount();
+        if (total <= 0) return false;
+        int lastVisible = llm.findLastCompletelyVisibleItemPosition();
+        return lastVisible >= total - 1;
+    }
+
+    static String extractGithubRepoUrl(String text) {
+        if (text == null) return null;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "(?:https?://)?(?:www\\.)?github\\.com/([\\w.\\-]+)/([\\w.\\-]+)",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = p.matcher(text);
+        if (!m.find()) {
+            return null;
+        }
+        String owner = m.group(1);
+        String name = m.group(2);
+        if (name.endsWith(".git")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        String[] blocked = {"settings", "topics", "marketplace", "explore", "notifications",
+                "login", "signup", "orgs", "users", "features", "pricing", "about"};
+        for (String b : blocked) {
+            if (b.equalsIgnoreCase(owner)) {
+                return null;
+            }
+        }
+        return "https://github.com/" + owner + "/" + name;
     }
 
     /** Rate-limit and schedule timestamps must not travel with backup/restore. */

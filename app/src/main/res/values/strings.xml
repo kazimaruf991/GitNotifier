@@ -99,4 +99,14 @@
     <string name="stat_repos">Repos</string>
     <string name="stat_unread">Unread</string>
     <string name="stat_disabled">Disabled</string>
+    <string name="not_a_github_repo_link">This is not a GitHub repository link.</string>
+    <string name="share_add_repo">Add repository</string>
+
+    <string name="restore_file_label">File: %1$s</string>
+    <string name="incorrect_password">Incorrect password</string>
+    <string name="qs_tile_label">Git monitoring</string>
+    <string name="qs_tile_on">On</string>
+    <string name="qs_tile_off">Off</string>
+    <string name="qs_tile_label_on">Git monitoring · On</string>
+    <string name="qs_tile_label_off">Git monitoring · Off</string>
 </resources>

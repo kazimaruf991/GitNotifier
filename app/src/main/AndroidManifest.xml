@@ -17,13 +17,36 @@
             android:exported="false"
             android:theme="@style/AppDialogTheme" />
 
-
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="false" />
+
+        <!-- Share / open-with: dialog only, no main UI -->
+        <activity
+            android:name=".ui.ShareAddRepoActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/AppDialogTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="github.com" android:pathPrefix="/" />
+                <data android:scheme="http" android:host="github.com" android:pathPrefix="/" />
+                <data android:scheme="https" android:host="www.github.com" android:pathPrefix="/" />
+                <data android:scheme="http" android:host="www.github.com" android:pathPrefix="/" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -38,5 +61,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".tile.MonitoringTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_play"
+            android:label="@string/qs_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -34,6 +34,19 @@ public class AddRepoDialog {
             Pattern.CASE_INSENSITIVE);
 
     public static void show(Context ctx, RepoEntity edit, Callback cb) {
+        show(ctx, edit, null, cb, null);
+    }
+
+    /** Prefill the link field (e.g. from a share intent). */
+    public static void showWithUrl(Context ctx, String githubUrl, Callback cb) {
+        show(ctx, null, githubUrl, cb, null);
+    }
+
+    public static void showWithUrl(Context ctx, String githubUrl, Callback cb, Runnable onDismiss) {
+        show(ctx, null, githubUrl, cb, onDismiss);
+    }
+
+    public static void show(Context ctx, RepoEntity edit, String prefillUrl, Callback cb, Runnable onDismiss) {
         MaterialAlertDialogBuilder b = new MaterialAlertDialogBuilder(ctx);
         View v = LayoutInflater.from(ctx).inflate(R.layout.dialog_add_repo, null);
         b.setView(v);
@@ -146,7 +159,12 @@ public class AddRepoDialog {
             branchesLoaded[0] = false;
             etLink.setText(r.url);
         } else {
-            etLink.requestFocus();
+            if (prefillUrl != null && !prefillUrl.trim().isEmpty()) {
+                etLink.setText(prefillUrl.trim());
+                // TextWatcher will parse owner/name and load branches
+            } else {
+                etLink.requestFocus();
+            }
         }
 
         btnCancel.setOnClickListener(x -> d.dismiss());
@@ -185,7 +203,13 @@ public class AddRepoDialog {
             d.dismiss();
         });
 
+        d.setOnDismissListener(dialog -> {
+            if (onDismiss != null) {
+                onDismiss.run();
+            }
+        });
         d.show();
         updateSaveEnabled.run();
     }
 }
+

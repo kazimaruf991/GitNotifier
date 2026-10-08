@@ -1,0 +1,22 @@
+name: Backup to GitLab
+
+on:
+  push:
+  delete:
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror repo to GitLab
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITLAB_USER: ${{ secrets.GITLAB_USER }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -eu
+          REPO="${GITHUB_REPOSITORY##*/}"
+          git clone --mirror "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo.git
+          cd repo.git
+          git push --prune "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_USER}/${REPO}.git" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
